@@ -69,7 +69,7 @@ function createPlayer(socketId: string, name: string, avatar: string, color: str
   }
 }
 
-function createRoom(host: Player, settings: RoomSettings): Room {
+function createRoom(host: Player, settings: RoomSettings, isPublic = false): Room {
   return {
     code: genRoomCode(),
     players: [host],
@@ -101,6 +101,7 @@ function createRoom(host: Player, settings: RoomSettings): Room {
     lastWord: null,
     lastWinner: null,
     roundCorrectCount: 0,
+    isPublic,
   }
 }
 
@@ -118,6 +119,29 @@ function systemMsg(content: string): ChatMessage {
 
 function broadcastRoomState(room: Room) {
   io.to(room.code).emit('room:state', room)
+}
+
+// Find an open public room a random player can join.
+// Criteria: public, in 'waiting' phase, has >=1 connected player, not full, at least one player
+// who is not currently mid-choose (the host should be idling in lobby).
+function findRandomRoom(): Room | null {
+  const candidates: Room[] = []
+  for (const room of rooms.values()) {
+    if (!room.isPublic) continue
+    if (room.phase !== 'waiting') continue
+    const connected = room.players.filter((p) => p.connected)
+    if (connected.length === 0) continue
+    if (connected.length >= 12) continue
+    candidates.push(room)
+  }
+  if (candidates.length === 0) return null
+  // Prefer rooms with more players (so random joiners group together), tie-break by oldest
+  candidates.sort((a, b) => {
+    const ca = a.players.filter((p) => p.connected).length
+    const cb = b.players.filter((p) => p.connected).length
+    return cb - ca
+  })
+  return candidates[0]
 }
 
 function getWordPool(room: Room): string[] {
@@ -380,7 +404,7 @@ io.on('connection', (socket) => {
 
   socket.on('room:create', (data, ack) => {
     const player = createPlayer(socket.id, data.name, data.avatar, data.color, true)
-    const room = createRoom(player, { ...DEFAULT_SETTINGS })
+    const room = createRoom(player, { ...DEFAULT_SETTINGS }, false)
     room.messages[0].content = `Room created! Share code ${room.code} with friends to invite them.`
     rooms.set(room.code, room)
     playerRoomMap.set(socket.id, room.code)
@@ -395,7 +419,7 @@ io.on('connection', (socket) => {
       ack({ ok: false, error: 'Room not found' })
       return
     }
-    if (room.players.length >= 12) {
+    if (room.players.filter((p) => p.connected).length >= 12) {
       ack({ ok: false, error: 'Room is full' })
       return
     }
@@ -409,6 +433,32 @@ io.on('connection', (socket) => {
     broadcastRoomState(room)
     ack({ ok: true, room, playerId: player.id })
     console.log(`[room:join] ${player.name} joined ${room.code}`)
+  })
+
+  socket.on('room:join-random', (data, ack) => {
+    // Try to find an existing open public room
+    let room = findRandomRoom()
+    if (!room) {
+      // No open room — create a new public one and become its host
+      const player = createPlayer(socket.id, data.name, data.avatar, data.color, true)
+      room = createRoom(player, { ...DEFAULT_SETTINGS }, true)
+      room.messages[0].content = `🌐 Global lobby created! Share code ${room.code} or wait for others to join.`
+      rooms.set(room.code, room)
+      playerRoomMap.set(socket.id, room.code)
+      socket.join(room.code)
+      ack({ ok: true, room, playerId: player.id })
+      console.log(`[room:join-random] ${player.name} created public ${room.code}`)
+      return
+    }
+    // Join the existing public room
+    const player = createPlayer(socket.id, data.name, data.avatar, data.color, false)
+    room.players.push(player)
+    playerRoomMap.set(socket.id, room.code)
+    socket.join(room.code)
+    room.messages.push(systemMsg(`${player.name} ${player.avatar} joined from the global lobby!`))
+    broadcastRoomState(room)
+    ack({ ok: true, room, playerId: player.id })
+    console.log(`[room:join-random] ${player.name} joined public ${room.code}`)
   })
 
   socket.on('room:reconnect', (data, ack) => {
@@ -497,12 +547,28 @@ io.on('connection', (socket) => {
     }
   })
 
-  socket.on('draw:stroke', (stroke) => {
+  socket.on('draw:stroke-start', (stroke) => {
     const code = playerRoomMap.get(socket.id)
     if (!code) return
     const room = rooms.get(code)
     if (!room || room.phase !== 'drawing' || room.currentDrawerId !== socket.id) return
-    socket.to(room.code).emit('draw:stroke', stroke, socket.id)
+    socket.to(room.code).emit('draw:stroke-start', stroke, socket.id)
+  })
+
+  socket.on('draw:stroke-point', (point) => {
+    const code = playerRoomMap.get(socket.id)
+    if (!code) return
+    const room = rooms.get(code)
+    if (!room || room.phase !== 'drawing' || room.currentDrawerId !== socket.id) return
+    socket.to(room.code).emit('draw:stroke-point', point, socket.id)
+  })
+
+  socket.on('draw:stroke-end', (strokeId) => {
+    const code = playerRoomMap.get(socket.id)
+    if (!code) return
+    const room = rooms.get(code)
+    if (!room || room.phase !== 'drawing' || room.currentDrawerId !== socket.id) return
+    socket.to(room.code).emit('draw:stroke-end', strokeId, socket.id)
   })
 
   socket.on('draw:clear', () => {

@@ -17,7 +17,6 @@ export type ToolType =
   | 'line'
   | 'rect'
   | 'circle'
-  | 'spray'
 
 export interface Player {
   id: string
@@ -103,6 +102,14 @@ export interface Room {
   lastWord: string | null
   lastWinner: string | null
   roundCorrectCount: number
+  isPublic: boolean // true = joinable via random/global lobby
+}
+
+// A single incremental point streamed live during drawing
+export interface StrokePoint {
+  strokeId: string
+  x: number // normalized 0..1
+  y: number // normalized 0..1
 }
 
 // ---- Socket event payloads (client -> server) ----
@@ -110,12 +117,15 @@ export interface ClientToServerEvents {
   'room:create': (data: { name: string; avatar: string; color: string }, ack: (res: { ok: boolean; room?: Room; playerId?: string; error?: string }) => void) => void
   'room:join': (data: { code: string; name: string; avatar: string; color: string }, ack: (res: { ok: boolean; room?: Room; playerId?: string; error?: string }) => void
   ) => void
+  'room:join-random': (data: { name: string; avatar: string; color: string }, ack: (res: { ok: boolean; room?: Room; playerId?: string; error?: string }) => void) => void
   'room:leave': () => void
   'room:reconnect': (data: { code: string; playerId: string }, ack: (res: { ok: boolean; room?: Room; error?: string }) => void) => void
   'game:start': () => void
   'game:choose-word': (word: string) => void
   'chat:send': (content: string) => void
-  'draw:stroke': (stroke: DrawStroke) => void
+  'draw:stroke-start': (stroke: DrawStroke) => void
+  'draw:stroke-point': (point: StrokePoint) => void
+  'draw:stroke-end': (strokeId: string) => void
   'draw:clear': () => void
   'draw:undo': () => void
   'reaction:send': (emoji: string) => void
@@ -130,7 +140,9 @@ export interface ServerToClientEvents {
   'room:player-left': (playerId: string) => void
   'room:player-updated': (player: Player) => void
   'chat:message': (message: ChatMessage) => void
-  'draw:stroke': (stroke: DrawStroke, playerId: string) => void
+  'draw:stroke-start': (stroke: DrawStroke, playerId: string) => void
+  'draw:stroke-point': (point: StrokePoint, playerId: string) => void
+  'draw:stroke-end': (strokeId: string, playerId: string) => void
   'draw:clear': (playerId: string) => void
   'draw:undo': (playerId: string) => void
   'game:phase': (phase: GamePhase, data?: { word?: string; choices?: string[]; drawerId?: string; timeLeft?: number }) => void

@@ -90,3 +90,46 @@ Unresolved / Future Enhancement Ideas:
 - Voice chat via WebRTC
 - Persistent leaderboard via Prisma
 - More game modes (team mode, speed mode, no-hints mode)
+
+---
+Task ID: 2
+Agent: main
+Task: Add global lobby matchmaking + real-time live drawing streaming + remove spray tool
+
+Work Log:
+- Removed spray tool from ToolType union, toolbar TOOLS array, and canvas drawStroke logic
+- Added `isPublic: boolean` to Room type; createRoom now takes isPublic flag (private by default)
+- Added `room:join-random` socket event with matchmaking: finds an open public room in 'waiting' phase (prefers rooms with more players), or creates a new public room if none exists
+- Replaced single `draw:stroke` event with 3-event live streaming protocol:
+  - `draw:stroke-start` (full DrawStroke with first point) — sent on pointerdown
+  - `draw:stroke-point` (StrokePoint { strokeId, x, y }) — sent on each pointermove, streams incremental points
+  - `draw:stroke-end` (strokeId) — sent on pointerup to finalize
+- Rewrote drawing-canvas.tsx with offscreen "base canvas" architecture:
+  - Base canvas holds all committed strokes; visible canvas composites base + live preview
+  - Append tools (pen/brush/eraser): stream points incrementally; spectator draws segment-by-segment in real-time
+  - Shape tools (line/rect/circle): spectator restores from base + redraws shape with updated endpoint on each point
+  - Fill tool: single-shot, committed immediately
+  - Added imperative handle methods: applyStrokeStart/Point/End, remoteUndo (no server echo), resetCanvas
+  - try/catch around setPointerCapture for synthetic event robustness
+- Updated Zustand store: added joinRandomRoom, sendStrokeStart/Point/End actions; live stream events stored as nonce-bumped signals (liveStrokeStart/Point/End, drawClearNonce, drawUndoNonce)
+- Updated GameRoomView: consumes store stream events via effects that call canvas imperative methods; added "🌐 Global Lobby" / "🔒 Private Room" badge in header
+- Added prominent "Quick Play — Join Global Lobby" CTA button on landing hero (gradient violet→fuchsia→rose) with loading state
+- Lint passes clean (0 errors, 0 warnings)
+
+Verification (agent-browser, 2 sessions through Caddy port 81):
+- Quick Play matchmaking: both players clicked Quick Play → matched into SAME room USSYW (global lobby badge shown)
+- Real-time streaming PROVEN with progressive pixel test:
+  * A drew a stroke; B received 466 dark pixels matching A exactly (final sync)
+  * Progressive mid-stroke test: B showed 256 dark pixels after 2 pointermoves (A had NOT released), then 616 after 4 moves (still not released) — proving points stream live point-by-point, not as a batch on pointerup
+- Spray tool confirmed removed (7 tool buttons: Pen, Brush, Eraser, Fill, Line, Rectangle, Circle)
+- No console/runtime errors
+
+Stage Summary:
+- Global lobby matchmaking works end-to-end (Quick Play → join/create public room)
+- Real-time live drawing streaming works: spectators watch the line being drawn as it happens, point-by-point
+- Spray tool removed from UI and types
+- All three requested features delivered and verified
+
+Unresolved / Notes:
+- HMR (hot module replacement) during development can disrupt in-memory canvas refs and socket connections; this is dev-only and does not affect production
+- Clear canvas button relies on tooltip-based selection in tests; the feature works via the toolbar's trash button in normal use

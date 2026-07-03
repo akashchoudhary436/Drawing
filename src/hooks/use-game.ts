@@ -9,6 +9,7 @@ import type {
   GamePhase,
   Reaction,
   RoomSettings,
+  StrokePoint,
 } from '@/lib/game-types'
 import { getSocket } from '@/lib/socket'
 
@@ -28,16 +29,25 @@ interface GameState {
   lastReaction: Reaction | null
   lastCorrectGuess: { playerId: string; word: string } | null
   lastRoundEnd: { word: string } | null
+  // Live drawing stream events (consumed by the canvas)
+  liveStrokeStart: { stroke: DrawStroke; fromId: string; nonce: number } | null
+  liveStrokePoint: { point: StrokePoint; fromId: string; nonce: number } | null
+  liveStrokeEnd: { strokeId: string; fromId: string; nonce: number } | null
+  drawClearNonce: number
+  drawUndoNonce: number
   error: string | null
   // Actions
   init: () => () => void
   createRoom: () => Promise<boolean>
   joinRoom: (code: string) => Promise<boolean>
+  joinRandomRoom: () => Promise<boolean>
   leaveRoom: () => void
   startGame: () => void
   chooseWord: (word: string) => void
   sendChat: (content: string) => void
-  sendStroke: (stroke: DrawStroke) => void
+  sendStrokeStart: (stroke: DrawStroke) => void
+  sendStrokePoint: (point: StrokePoint) => void
+  sendStrokeEnd: (strokeId: string) => void
   clearCanvas: () => void
   undoStroke: () => void
   sendReaction: (emoji: string) => void
@@ -58,6 +68,11 @@ export const useGame = create<GameState>((set, get) => ({
   lastReaction: null,
   lastCorrectGuess: null,
   lastRoundEnd: null,
+  liveStrokeStart: null,
+  liveStrokePoint: null,
+  liveStrokeEnd: null,
+  drawClearNonce: 0,
+  drawUndoNonce: 0,
   error: null,
 
   init: () => {
@@ -125,6 +140,33 @@ export const useGame = create<GameState>((set, get) => ({
       setTimeout(() => set({ error: null }), 4000)
     }
 
+    // Live drawing stream -> bump nonces so the canvas effect re-runs
+    let strokeNonce = 0
+    let pointNonce = 0
+    let endNonce = 0
+    let clearNonce = 0
+    let undoNonce = 0
+    const onStrokeStart = (stroke: DrawStroke, fromId: string) => {
+      strokeNonce += 1
+      set({ liveStrokeStart: { stroke, fromId, nonce: strokeNonce } })
+    }
+    const onStrokePoint = (point: StrokePoint, fromId: string) => {
+      pointNonce += 1
+      set({ liveStrokePoint: { point, fromId, nonce: pointNonce } })
+    }
+    const onStrokeEnd = (strokeId: string, fromId: string) => {
+      endNonce += 1
+      set({ liveStrokeEnd: { strokeId, fromId, nonce: endNonce } })
+    }
+    const onDrawClear = (_fromId: string) => {
+      clearNonce += 1
+      set({ drawClearNonce: clearNonce })
+    }
+    const onDrawUndo = (_fromId: string) => {
+      undoNonce += 1
+      set({ drawUndoNonce: undoNonce })
+    }
+
     socket.on('connect', onConnect)
     socket.on('disconnect', onDisconnect)
     socket.on('room:state', onRoomState)
@@ -137,6 +179,11 @@ export const useGame = create<GameState>((set, get) => ({
     socket.on('game:guessed', onGuessed)
     socket.on('reaction:new', onReaction)
     socket.on('settings:updated', onSettingsUpdated)
+    socket.on('draw:stroke-start', onStrokeStart)
+    socket.on('draw:stroke-point', onStrokePoint)
+    socket.on('draw:stroke-end', onStrokeEnd)
+    socket.on('draw:clear', onDrawClear)
+    socket.on('draw:undo', onDrawUndo)
     socket.on('error', onError)
 
     return () => {
@@ -152,6 +199,11 @@ export const useGame = create<GameState>((set, get) => ({
       socket.off('game:guessed', onGuessed)
       socket.off('reaction:new', onReaction)
       socket.off('settings:updated', onSettingsUpdated)
+      socket.off('draw:stroke-start', onStrokeStart)
+      socket.off('draw:stroke-point', onStrokePoint)
+      socket.off('draw:stroke-end', onStrokeEnd)
+      socket.off('draw:clear', onDrawClear)
+      socket.off('draw:undo', onDrawUndo)
       socket.off('error', onError)
     }
   },
@@ -200,6 +252,26 @@ export const useGame = create<GameState>((set, get) => ({
     })
   },
 
+  joinRandomRoom: async () => {
+    const socket = getSocket()
+    const { playerName, playerAvatar, playerColor } = get()
+    if (!playerName.trim()) {
+      set({ error: 'Please enter a name' })
+      return false
+    }
+    return new Promise((resolve) => {
+      socket.emit('room:join-random', { name: playerName, avatar: playerAvatar, color: playerColor }, (res) => {
+        if (res.ok && res.room && res.playerId) {
+          set({ room: res.room, playerId: res.playerId, view: 'room' })
+          resolve(true)
+        } else {
+          set({ error: res.error || 'Failed to join lobby' })
+          resolve(false)
+        }
+      })
+    })
+  },
+
   leaveRoom: () => {
     const socket = getSocket()
     socket.emit('room:leave')
@@ -222,9 +294,19 @@ export const useGame = create<GameState>((set, get) => ({
     socket.emit('chat:send', content)
   },
 
-  sendStroke: (stroke: DrawStroke) => {
+  sendStrokeStart: (stroke: DrawStroke) => {
     const socket = getSocket()
-    socket.emit('draw:stroke', stroke)
+    socket.emit('draw:stroke-start', stroke)
+  },
+
+  sendStrokePoint: (point: StrokePoint) => {
+    const socket = getSocket()
+    socket.emit('draw:stroke-point', point)
+  },
+
+  sendStrokeEnd: (strokeId: string) => {
+    const socket = getSocket()
+    socket.emit('draw:stroke-end', strokeId)
   },
 
   clearCanvas: () => {

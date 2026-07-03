@@ -1,44 +1,81 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef } from 'react'
-import type { DrawStroke, ToolType } from '@/lib/game-types'
+import type { DrawStroke, ToolType, StrokePoint } from '@/lib/game-types'
 
 export interface DrawingCanvasHandle {
   clearLocal: () => void
   undoLocal: () => void
   redoLocal: () => void
-  loadStrokes: (strokes: DrawStroke[]) => void
   exportImage: () => string | null
+  // Spectator live-stream handlers
+  applyStrokeStart: (stroke: DrawStroke) => void
+  applyStrokePoint: (point: StrokePoint) => void
+  applyStrokeEnd: (strokeId: string) => void
+  // Spectator remote undo (does NOT re-emit to server)
+  remoteUndo: () => void
+  // Reset all local state (e.g. on phase change)
+  resetCanvas: () => void
 }
 
 interface DrawingCanvasProps {
   isDrawer: boolean
-  onStroke: (stroke: DrawStroke) => void
+  onStrokeStart: (stroke: DrawStroke) => void
+  onStrokePoint: (point: StrokePoint) => void
+  onStrokeEnd: (strokeId: string) => void
   onClear: () => void
   onUndo: () => void
   tool: ToolType
   color: string
   brushSize: number
-  remoteStrokes: DrawStroke[]
   remoteClearSignal: number
   remoteUndoSignal: number
 }
 
+// Tools that grow point-by-point (streamed as appends)
+const APPEND_TOOLS: ToolType[] = ['pen', 'brush', 'eraser']
+// Tools with exactly 2 points (shape preview updates the 2nd point live)
+const SHAPE_TOOLS: ToolType[] = ['line', 'rect', 'circle']
+const isAppend = (t: ToolType) => APPEND_TOOLS.includes(t)
+const isShape = (t: ToolType) => SHAPE_TOOLS.includes(t)
+
 const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(function DrawingCanvas(
-  { isDrawer, onStroke, onClear, onUndo, tool, color, brushSize, remoteStrokes, remoteClearSignal, remoteUndoSignal },
+  {
+    isDrawer,
+    onStrokeStart,
+    onStrokePoint,
+    onStrokeEnd,
+    onClear,
+    onUndo,
+    tool,
+    color,
+    brushSize,
+    remoteClearSignal,
+    remoteUndoSignal,
+  },
   ref
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
+  // Offscreen base canvas: holds all committed strokes for cheap shape-preview restoration
+  const baseCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const baseCtxRef = useRef<CanvasRenderingContext2D | null>(null)
+
   const isDrawingRef = useRef(false)
   const currentStrokeRef = useRef<DrawStroke | null>(null)
-  const localStrokesRef = useRef<DrawStroke[]>([])
+  const committedStrokesRef = useRef<DrawStroke[]>([]) // full history (for undo/redo/replay)
   const redoStackRef = useRef<DrawStroke[]>([])
   const lastPosRef = useRef<{ x: number; y: number } | null>(null)
-  const snapshotRef = useRef<ImageData | null>(null)
+
+  // Spectator: live in-progress strokes keyed by id (for shape preview redraw)
+  const liveStrokesRef = useRef<Map<string, DrawStroke>>(new Map())
+  // Snapshot used by the DRAWER for shape preview (local optimization)
+  const drawerSnapshotRef = useRef<ImageData | null>(null)
+
   const [size, setSize] = useState({ w: 800, h: 600 })
 
+  // ---- Setup canvas + base canvas ----
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -49,6 +86,15 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(functi
     ctx.lineJoin = 'round'
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+    const base = document.createElement('canvas')
+    baseCanvasRef.current = base
+    const bctx = base.getContext('2d')
+    if (bctx) {
+      bctx.lineCap = 'round'
+      bctx.lineJoin = 'round'
+      baseCtxRef.current = bctx
+    }
   }, [])
 
   useEffect(() => {
@@ -66,6 +112,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(functi
     return () => ro.disconnect()
   }, [])
 
+  // ---- Helpers ----
   const toNormalized = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current
     if (!canvas) return { x: 0, y: 0 }
@@ -80,6 +127,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(functi
     return { x: nx * size.w, y: ny * size.h }
   }, [size.w, size.h])
 
+  // Draw a single stroke onto a given context
   const drawStroke = useCallback((ctx: CanvasRenderingContext2D, stroke: DrawStroke) => {
     ctx.save()
     ctx.lineCap = 'round'
@@ -87,38 +135,37 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(functi
     ctx.strokeStyle = stroke.color
     ctx.fillStyle = stroke.color
     ctx.lineWidth = stroke.size
-
     if (stroke.tool === 'eraser') {
       ctx.strokeStyle = '#ffffff'
       ctx.fillStyle = '#ffffff'
     }
 
     const pts = stroke.points
-    if (stroke.tool === 'pen' || stroke.tool === 'brush' || stroke.tool === 'eraser') {
-      if (pts.length === 0) {
-        ctx.restore()
-        return
-      }
+    if (pts.length === 0) {
+      ctx.restore()
+      return
+    }
+
+    if (isAppend(stroke.tool)) {
       if (pts.length === 1) {
         const p = fromNormalized(pts[0].x, pts[0].y)
         ctx.beginPath()
         ctx.arc(p.x, p.y, stroke.size / 2, 0, Math.PI * 2)
         ctx.fill()
-        ctx.restore()
-        return
+      } else {
+        ctx.beginPath()
+        const start = fromNormalized(pts[0].x, pts[0].y)
+        ctx.moveTo(start.x, start.y)
+        for (let i = 1; i < pts.length; i++) {
+          const p = fromNormalized(pts[i].x, pts[i].y)
+          const prev = fromNormalized(pts[i - 1].x, pts[i - 1].y)
+          const mid = { x: (prev.x + p.x) / 2, y: (prev.y + p.y) / 2 }
+          ctx.quadraticCurveTo(prev.x, prev.y, mid.x, mid.y)
+        }
+        const last = fromNormalized(pts[pts.length - 1].x, pts[pts.length - 1].y)
+        ctx.lineTo(last.x, last.y)
+        ctx.stroke()
       }
-      ctx.beginPath()
-      const start = fromNormalized(pts[0].x, pts[0].y)
-      ctx.moveTo(start.x, start.y)
-      for (let i = 1; i < pts.length; i++) {
-        const p = fromNormalized(pts[i].x, pts[i].y)
-        const prev = fromNormalized(pts[i - 1].x, pts[i - 1].y)
-        const mid = { x: (prev.x + p.x) / 2, y: (prev.y + p.y) / 2 }
-        ctx.quadraticCurveTo(prev.x, prev.y, mid.x, mid.y)
-      }
-      const last = fromNormalized(pts[pts.length - 1].x, pts[pts.length - 1].y)
-      ctx.lineTo(last.x, last.y)
-      ctx.stroke()
     } else if (stroke.tool === 'line' && pts.length >= 2) {
       const a = fromNormalized(pts[0].x, pts[0].y)
       const b = fromNormalized(pts[1].x, pts[1].y)
@@ -139,17 +186,6 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(functi
       ctx.beginPath()
       ctx.arc(a.x, a.y, r, 0, Math.PI * 2)
       ctx.stroke()
-    } else if (stroke.tool === 'spray' && pts.length >= 1) {
-      const p = fromNormalized(pts[pts.length - 1].x, pts[pts.length - 1].y)
-      const radius = stroke.size * 1.5
-      const density = stroke.size * 2
-      for (let i = 0; i < density; i++) {
-        const angle = Math.random() * Math.PI * 2
-        const dist = Math.random() * radius
-        ctx.beginPath()
-        ctx.arc(p.x + Math.cos(angle) * dist, p.y + Math.sin(angle) * dist, 1, 0, Math.PI * 2)
-        ctx.fill()
-      }
     } else if (stroke.tool === 'fill' && pts.length >= 1) {
       const p = fromNormalized(pts[0].x, pts[0].y)
       floodFill(ctx, Math.floor(p.x), Math.floor(p.y), stroke.color, size.w, size.h)
@@ -157,86 +193,108 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(functi
     ctx.restore()
   }, [fromNormalized, size.w, size.h])
 
-  const redrawAll = useCallback(() => {
+  // Commit a stroke to both the visible canvas and the base canvas
+  const commitStroke = useCallback((stroke: DrawStroke) => {
     const ctx = ctxRef.current
-    const canvas = canvasRef.current
-    if (!ctx || !canvas) return
+    const bctx = baseCtxRef.current
+    if (ctx) drawStroke(ctx, stroke)
+    if (bctx) drawStroke(bctx, stroke)
+  }, [drawStroke])
+
+  // Restore visible canvas from base (used for shape previews)
+  const restoreFromBase = useCallback(() => {
+    const ctx = ctxRef.current
+    const base = baseCanvasRef.current
+    if (!ctx || !base) return
+    ctx.clearRect(0, 0, size.w, size.h)
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, size.w, size.h)
-    for (const s of localStrokesRef.current) {
-      drawStroke(ctx, s)
-    }
-  }, [size.w, size.h, drawStroke])
+    ctx.drawImage(base, 0, 0, size.w, size.h)
+  }, [size.w, size.h])
 
+  const clearBoth = useCallback(() => {
+    const ctx = ctxRef.current
+    const bctx = baseCtxRef.current
+    if (ctx) {
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, size.w, size.h)
+    }
+    if (bctx) {
+      bctx.fillStyle = '#ffffff'
+      bctx.fillRect(0, 0, size.w, size.h)
+    }
+  }, [size.w, size.h])
+
+  // Full replay from committed history (used after undo / resize)
+  const replayAll = useCallback(() => {
+    clearBoth()
+    for (const s of committedStrokesRef.current) {
+      const ctx = ctxRef.current
+      const bctx = baseCtxRef.current
+      if (ctx) drawStroke(ctx, s)
+      if (bctx) drawStroke(bctx, s)
+    }
+  }, [clearBoth, drawStroke])
+
+  // ---- Resize: re-init backing store + replay ----
   useEffect(() => {
     const canvas = canvasRef.current
     const ctx = ctxRef.current
-    if (!canvas || !ctx) return
+    const base = baseCanvasRef.current
+    const bctx = baseCtxRef.current
+    if (!canvas || !ctx || !base || !bctx) return
     const dpr = window.devicePixelRatio || 1
     canvas.width = size.w * dpr
     canvas.height = size.h * dpr
     canvas.style.width = `${size.w}px`
     canvas.style.height = `${size.h}px`
+    base.width = size.w * dpr
+    base.height = size.h * dpr
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.scale(dpr, dpr)
+    bctx.setTransform(1, 0, 0, 1, 0, 0)
+    bctx.scale(dpr, dpr)
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, size.w, size.h)
-    redrawAll()
-  }, [size.w, size.h, redrawAll])
+    bctx.lineCap = 'round'
+    bctx.lineJoin = 'round'
+    replayAll()
+  }, [size.w, size.h, replayAll])
 
-  useEffect(() => {
-    if (!isDrawer && remoteStrokes.length > 0) {
-      const last = remoteStrokes[remoteStrokes.length - 1]
-      const ctx = ctxRef.current
-      if (ctx) {
-        drawStroke(ctx, last)
-        localStrokesRef.current.push(last)
-        redoStackRef.current = []
-      }
-    }
-  }, [remoteStrokes])
-
+  // ---- Remote clear / undo signals ----
   useEffect(() => {
     if (remoteClearSignal > 0) {
-      const ctx = ctxRef.current
-      if (ctx) {
-        ctx.fillStyle = '#ffffff'
-        ctx.fillRect(0, 0, size.w, size.h)
-      }
-      localStrokesRef.current = []
+      committedStrokesRef.current = []
       redoStackRef.current = []
+      liveStrokesRef.current.clear()
+      clearBoth()
     }
   }, [remoteClearSignal])
 
   useEffect(() => {
     if (remoteUndoSignal > 0) {
-      if (localStrokesRef.current.length > 0) {
-        const popped = localStrokesRef.current.pop()
+      if (committedStrokesRef.current.length > 0) {
+        const popped = committedStrokesRef.current.pop()
         if (popped) redoStackRef.current.push(popped)
-        redrawAll()
+        replayAll()
       }
     }
   }, [remoteUndoSignal])
 
+  // ---- Drawer pointer handlers ----
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (!isDrawer) return
     e.preventDefault()
     const canvas = canvasRef.current
-    if (canvas) canvas.setPointerCapture(e.pointerId)
+    if (canvas) {
+      try { canvas.setPointerCapture(e.pointerId) } catch { /* synthetic events may fail */ }
+    }
     const pos = toNormalized(e.clientX, e.clientY)
     isDrawingRef.current = true
     lastPosRef.current = pos
 
-    if (tool === 'line' || tool === 'rect' || tool === 'circle') {
-      const ctx = ctxRef.current
-      const dpr = window.devicePixelRatio || 1
-      if (ctx) snapshotRef.current = ctx.getImageData(0, 0, size.w * dpr, size.h * dpr)
-    }
-
     const stroke: DrawStroke = {
-      id: Math.random().toString(36).slice(2, 10),
+      id: Math.random().toString(36).slice(2, 12),
       tool,
       color,
       size: brushSize,
@@ -244,22 +302,28 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(functi
     }
     currentStrokeRef.current = stroke
 
-    const ctx = ctxRef.current
-    if (ctx) {
-      if (tool === 'fill') {
-        drawStroke(ctx, stroke)
-        localStrokesRef.current.push(stroke)
-        redoStackRef.current = []
-        onStroke(stroke)
-        isDrawingRef.current = false
-        currentStrokeRef.current = null
-      } else if (tool === 'spray') {
-        drawStroke(ctx, stroke)
-      } else if (tool === 'pen' || tool === 'brush' || tool === 'eraser') {
-        drawStroke(ctx, stroke)
-      }
+    // For shape tools, snapshot the base so we can preview live
+    if (isShape(tool)) {
+      // base canvas already holds committed strokes — we restore from it on each move
     }
-  }, [isDrawer, tool, color, brushSize, toNormalized, size.w, size.h, drawStroke, onStroke])
+
+    // Draw the initial mark
+    if (isAppend(tool) || tool === 'fill') {
+      commitStroke(stroke)
+    }
+
+    // Notify server (broadcasts to spectators)
+    onStrokeStart(stroke)
+
+    // Fill is a single-shot tool: end immediately
+    if (tool === 'fill') {
+      committedStrokesRef.current.push(stroke)
+      redoStackRef.current = []
+      onStrokeEnd(stroke.id)
+      isDrawingRef.current = false
+      currentStrokeRef.current = null
+    }
+  }, [isDrawer, tool, color, brushSize, toNormalized, commitStroke, onStrokeStart, onStrokeEnd])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!isDrawer || !isDrawingRef.current || !currentStrokeRef.current) return
@@ -269,8 +333,8 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(functi
     const ctx = ctxRef.current
     if (!ctx) return
 
-    if (stroke.tool === 'pen' || stroke.tool === 'brush' || stroke.tool === 'eraser') {
-      stroke.points.push({ x: pos.x, y: pos.y })
+    if (isAppend(stroke.tool)) {
+      // Append point + draw incremental segment on visible canvas only (commit on end)
       const last = lastPosRef.current
       if (last) {
         const a = fromNormalized(last.x, last.y)
@@ -286,19 +350,19 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(functi
         ctx.stroke()
         ctx.restore()
       }
-      lastPosRef.current = pos
-    } else if (stroke.tool === 'spray') {
       stroke.points.push({ x: pos.x, y: pos.y })
-      drawStroke(ctx, stroke)
       lastPosRef.current = pos
-    } else if (stroke.tool === 'line' || stroke.tool === 'rect' || stroke.tool === 'circle') {
-      if (snapshotRef.current) {
-        ctx.putImageData(snapshotRef.current, 0, 0)
-      }
+      // Stream point to spectators (append)
+      onStrokePoint({ strokeId: stroke.id, x: pos.x, y: pos.y })
+    } else if (isShape(stroke.tool)) {
+      // Update 2nd point + redraw from base
+      restoreFromBase()
       stroke.points = [stroke.points[0], { x: pos.x, y: pos.y }]
       drawStroke(ctx, stroke)
+      // Stream the updated endpoint to spectators (they replace the last point)
+      onStrokePoint({ strokeId: stroke.id, x: pos.x, y: pos.y })
     }
-  }, [isDrawer, toNormalized, fromNormalized, drawStroke])
+  }, [isDrawer, toNormalized, fromNormalized, restoreFromBase, drawStroke, onStrokePoint])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (!isDrawer || !isDrawingRef.current) return
@@ -307,52 +371,141 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(functi
     isDrawingRef.current = false
     currentStrokeRef.current = null
     lastPosRef.current = null
-    snapshotRef.current = null
-    if (stroke && stroke.points.length > 0) {
-      localStrokesRef.current.push(stroke)
-      redoStackRef.current = []
-      onStroke(stroke)
-    }
-  }, [isDrawer, onStroke])
+    if (!stroke || stroke.points.length === 0) return
 
+    // Commit the stroke permanently to base + history
+    if (isAppend(stroke.tool)) {
+      // Append tools drew incrementally on visible canvas only; now commit to base
+      const bctx = baseCtxRef.current
+      if (bctx) drawStroke(bctx, stroke)
+    } else if (isShape(stroke.tool)) {
+      // Shape tools previewed on visible canvas; commit to base (visible already shows it)
+      const bctx = baseCtxRef.current
+      if (bctx) drawStroke(bctx, stroke)
+    }
+    committedStrokesRef.current.push(stroke)
+    redoStackRef.current = []
+    onStrokeEnd(stroke.id)
+  }, [isDrawer, drawStroke, onStrokeEnd])
+
+  // ---- Imperative handle (called by parent for spectator events + drawer actions) ----
   useImperativeHandle(ref, () => ({
     clearLocal: () => {
-      const ctx = ctxRef.current
-      if (ctx) {
-        ctx.fillStyle = '#ffffff'
-        ctx.fillRect(0, 0, size.w, size.h)
-      }
-      localStrokesRef.current = []
+      committedStrokesRef.current = []
       redoStackRef.current = []
+      liveStrokesRef.current.clear()
+      clearBoth()
       onClear()
     },
     undoLocal: () => {
-      if (localStrokesRef.current.length > 0) {
-        const popped = localStrokesRef.current.pop()
+      if (committedStrokesRef.current.length > 0) {
+        const popped = committedStrokesRef.current.pop()
         if (popped) redoStackRef.current.push(popped)
-        redrawAll()
+        replayAll()
         onUndo()
+      }
+    },
+    remoteUndo: () => {
+      // Spectator: pop the last committed stroke locally and replay (no server echo)
+      if (committedStrokesRef.current.length > 0) {
+        committedStrokesRef.current.pop()
+        redoStackRef.current = []
+        replayAll()
       }
     },
     redoLocal: () => {
       const stroke = redoStackRef.current.pop()
       if (stroke) {
-        const ctx = ctxRef.current
-        if (ctx) drawStroke(ctx, stroke)
-        localStrokesRef.current.push(stroke)
-        onStroke(stroke)
+        commitStroke(stroke)
+        committedStrokesRef.current.push(stroke)
+        onStrokeStart(stroke)
+        onStrokeEnd(stroke.id)
       }
-    },
-    loadStrokes: (strokes: DrawStroke[]) => {
-      localStrokesRef.current = strokes
-      redoStackRef.current = []
-      redrawAll()
     },
     exportImage: () => {
       const canvas = canvasRef.current
       return canvas ? canvas.toDataURL('image/png') : null
     },
-  }), [size.w, size.h, drawStroke, redrawAll, onClear, onUndo, onStroke])
+    resetCanvas: () => {
+      committedStrokesRef.current = []
+      redoStackRef.current = []
+      liveStrokesRef.current.clear()
+      clearBoth()
+    },
+    // ---- Spectator live-stream handlers ----
+    applyStrokeStart: (stroke: DrawStroke) => {
+      // Track the live stroke
+      liveStrokesRef.current.set(stroke.id, { ...stroke, points: [...stroke.points] })
+      if (isAppend(stroke.tool) || stroke.tool === 'fill') {
+        // Draw the initial mark on visible + base
+        commitStroke(stroke)
+        if (stroke.tool === 'fill') {
+          // Fill is single-shot; treat as committed immediately
+          committedStrokesRef.current.push(stroke)
+        }
+      }
+      // Shape tools: nothing drawn until first point update
+    },
+    applyStrokePoint: (point: StrokePoint) => {
+      const stroke = liveStrokesRef.current.get(point.strokeId)
+      if (!stroke) return
+      const ctx = ctxRef.current
+      if (!ctx) return
+
+      if (isAppend(stroke.tool)) {
+        // Append + draw incremental segment on visible + base
+        const last = stroke.points[stroke.points.length - 1]
+        stroke.points.push({ x: point.x, y: point.y })
+        if (last) {
+          const a = fromNormalized(last.x, last.y)
+          const b = fromNormalized(point.x, point.y)
+          // Visible
+          ctx.save()
+          ctx.lineCap = 'round'
+          ctx.lineJoin = 'round'
+          ctx.strokeStyle = stroke.tool === 'eraser' ? '#ffffff' : stroke.color
+          ctx.lineWidth = stroke.size
+          ctx.beginPath()
+          ctx.moveTo(a.x, a.y)
+          ctx.lineTo(b.x, b.y)
+          ctx.stroke()
+          ctx.restore()
+          // Base
+          const bctx = baseCtxRef.current
+          if (bctx) {
+            bctx.save()
+            bctx.lineCap = 'round'
+            bctx.lineJoin = 'round'
+            bctx.strokeStyle = stroke.tool === 'eraser' ? '#ffffff' : stroke.color
+            bctx.lineWidth = stroke.size
+            bctx.beginPath()
+            bctx.moveTo(a.x, a.y)
+            bctx.lineTo(b.x, b.y)
+            bctx.stroke()
+            bctx.restore()
+          }
+        }
+      } else if (isShape(stroke.tool)) {
+        // Replace 2nd point, restore from base, redraw shape preview on visible canvas
+        stroke.points = [stroke.points[0], { x: point.x, y: point.y }]
+        restoreFromBase()
+        drawStroke(ctx, stroke)
+      }
+    },
+    applyStrokeEnd: (strokeId: string) => {
+      const stroke = liveStrokesRef.current.get(strokeId)
+      if (!stroke) return
+      liveStrokesRef.current.delete(strokeId)
+      if (isShape(stroke.tool)) {
+        // Final shape already drawn on visible canvas; commit to base
+        const bctx = baseCtxRef.current
+        if (bctx) drawStroke(bctx, stroke)
+      }
+      // Append tools were committed incrementally; just record in history
+      committedStrokesRef.current.push(stroke)
+      redoStackRef.current = []
+    },
+  }), [size.w, size.h, clearBoth, replayAll, commitStroke, drawStroke, restoreFromBase, fromNormalized, onClear, onUndo, onStrokeStart, onStrokeEnd])
 
   return (
     <div
@@ -380,6 +533,7 @@ const DrawingCanvas = forwardRef<DrawingCanvasHandle, DrawingCanvasProps>(functi
   )
 })
 
+// Flood fill implementation
 function floodFill(ctx: CanvasRenderingContext2D, x: number, y: number, fillColor: string, w: number, h: number) {
   const dpr = window.devicePixelRatio || 1
   const realX = Math.floor(x * dpr)

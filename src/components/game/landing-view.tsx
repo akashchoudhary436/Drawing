@@ -11,14 +11,14 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
-import { Sparkles, Zap, Trophy, Users, Palette, Swords, Gamepad2, ArrowRight, Copy } from 'lucide-react'
+import { Sparkles, Zap, Trophy, Users, Palette, Swords, Gamepad2, ArrowRight, Copy, Globe, Shuffle } from 'lucide-react'
 import { AVATARS, AVATAR_COLORS, WORD_CATEGORIES } from '@/lib/words'
 import { useGame } from '@/hooks/use-game'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
 export function LandingView() {
-  const { playerName, playerAvatar, playerColor, setPlayerInfo, createRoom, joinRoom, connected } = useGame()
+  const { playerName, playerAvatar, playerColor, setPlayerInfo, createRoom, joinRoom, joinRandomRoom, connected } = useGame()
   const { toast } = useToast()
   const [joinCode, setJoinCode] = useState('')
   const [rounds, setRounds] = useState(3)
@@ -27,6 +27,24 @@ export function LandingView() {
   const [wordMode, setWordMode] = useState<'all' | 'category' | 'custom'>('all')
   const [category, setCategory] = useState('animals')
   const [customWords, setCustomWords] = useState('')
+  const [joiningRandom, setJoiningRandom] = useState(false)
+
+  const handleJoinRandom = async () => {
+    if (!connected) {
+      toast({ title: 'Connecting...', description: 'Still connecting to server', variant: 'destructive' })
+      return
+    }
+    if (!playerName.trim()) {
+      toast({ title: 'Enter a name first', description: 'Pick a display name to play', variant: 'destructive' })
+      return
+    }
+    setJoiningRandom(true)
+    const ok = await joinRandomRoom()
+    setJoiningRandom(false)
+    if (ok) {
+      toast({ title: '🌐 Joined the global lobby!', description: 'Hang tight — others will join soon' })
+    }
+  }
 
   const handleCreate = async () => {
     if (!connected) {
@@ -119,7 +137,7 @@ export function LandingView() {
         <div className="mt-5 flex flex-wrap justify-center gap-2 text-xs">
           {[
             { icon: Users, label: 'Up to 12 players' },
-            { icon: Palette, label: '8 drawing tools' },
+            { icon: Palette, label: '7 drawing tools' },
             { icon: Zap, label: 'Real-time sync' },
             { icon: Trophy, label: '8 word categories' },
             { icon: Gamepad2, label: 'Mobile friendly' },
@@ -128,6 +146,32 @@ export function LandingView() {
               <f.icon className="h-3 w-3" /> {f.label}
             </Badge>
           ))}
+        </div>
+
+        {/* Quick Play CTA */}
+        <div className="mt-7 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <Button
+            size="lg"
+            onClick={handleJoinRandom}
+            disabled={!connected || !playerName.trim() || joiningRandom}
+            className="gap-2 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-rose-500 hover:opacity-90 text-base px-7 h-12 shadow-lg shadow-fuchsia-500/20"
+          >
+            {joiningRandom ? (
+              <>
+                <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                Finding a lobby...
+              </>
+            ) : (
+              <>
+                <Globe className="h-5 w-5" />
+                Quick Play — Join Global Lobby
+              </>
+            )}
+          </Button>
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Shuffle className="h-3 w-3" />
+            Instant matchmaking with online players
+          </span>
         </div>
       </section>
 

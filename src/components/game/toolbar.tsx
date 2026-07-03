@@ -12,7 +12,6 @@ import {
   Minus,
   Square,
   Circle,
-  SprayCan,
   Undo2,
   Redo2,
   Trash2,
@@ -41,7 +40,6 @@ const TOOLS: { id: ToolType; icon: React.ReactNode; label: string }[] = [
   { id: 'line', icon: <Minus className="h-4 w-4" />, label: 'Line' },
   { id: 'rect', icon: <Square className="h-4 w-4" />, label: 'Rectangle' },
   { id: 'circle', icon: <Circle className="h-4 w-4" />, label: 'Circle' },
-  { id: 'spray', icon: <SprayCan className="h-4 w-4" />, label: 'Spray' },
 ]
 
 const COLORS = [

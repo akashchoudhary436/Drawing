@@ -13,14 +13,13 @@ import {
 } from 'lucide-react'
 import { useGame } from '@/hooks/use-game'
 import { useToast } from '@/hooks/use-toast'
-import { getSocket } from '@/lib/socket'
 import { Toolbar } from './toolbar'
 import DrawingCanvas, { type DrawingCanvasHandle } from './drawing-canvas'
 import { PlayersPanel } from './players-panel'
 import { ChatPanel } from './chat-panel'
 import { WordPicker } from './word-picker'
 import { ReactionsOverlay, RoundEndOverlay, CorrectGuessToast } from './overlays'
-import type { ToolType, DrawStroke, RoomSettings } from '@/lib/game-types'
+import type { ToolType, DrawStroke, RoomSettings, StrokePoint } from '@/lib/game-types'
 import { cn } from '@/lib/utils'
 
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '🔥', '👏', '🎉', '🤔']
@@ -28,17 +27,15 @@ const REACTION_EMOJIS = ['👍', '❤️', '😂', '😮', '🔥', '👏', '🎉
 export function GameRoomView() {
   const {
     room, playerId, view, leaveRoom, startGame, chooseWord, sendChat,
-    sendStroke, clearCanvas, undoStroke, sendReaction, updateSettings, lastReaction,
-    lastRoundEnd, lastCorrectGuess,
+    sendStrokeStart, sendStrokePoint, sendStrokeEnd, clearCanvas, undoStroke,
+    sendReaction, lastReaction, lastRoundEnd, lastCorrectGuess,
+    liveStrokeStart, liveStrokePoint, liveStrokeEnd, drawClearNonce, drawUndoNonce,
   } = useGame()
   const { toast } = useToast()
 
   const [tool, setTool] = useState<ToolType>('pen')
   const [color, setColor] = useState('#000000')
   const [brushSize, setBrushSize] = useState(5)
-  const [remoteStrokes, setRemoteStrokes] = useState<DrawStroke[]>([])
-  const [remoteClearSignal, setRemoteClearSignal] = useState(0)
-  const [remoteUndoSignal, setRemoteUndoSignal] = useState(0)
   const [showWordPickerDismissed, setShowWordPickerDismissed] = useState(false)
   const [showMobilePlayers, setShowMobilePlayers] = useState(false)
   const canvasRef = useRef<DrawingCanvasHandle>(null)
@@ -49,50 +46,58 @@ export function GameRoomView() {
   const isHost = room?.hostId === playerId
   const hasGuessed = me?.guessedThisRound ?? false
 
-  // Socket listeners for draw events
+  // Forward live-stream events from the store to the canvas (spectator side)
   useEffect(() => {
-    if (!view) return
-    let socket: any
-    try {
-      socket = getSocket()
-    } catch {
-      return
+    if (liveStrokeStart && liveStrokeStart.fromId !== playerId) {
+      canvasRef.current?.applyStrokeStart(liveStrokeStart.stroke)
     }
+  }, [liveStrokeStart?.nonce])
 
-    const onStroke = (stroke: DrawStroke, fromPlayerId: string) => {
-      if (fromPlayerId !== playerId) {
-        setRemoteStrokes((prev) => [...prev, stroke])
-      }
+  useEffect(() => {
+    if (liveStrokePoint && liveStrokePoint.fromId !== playerId) {
+      canvasRef.current?.applyStrokePoint(liveStrokePoint.point)
     }
-    const onClear = () => setRemoteClearSignal((v) => v + 1)
-    const onUndo = () => setRemoteUndoSignal((v) => v + 1)
+  }, [liveStrokePoint?.nonce])
 
-    socket.on('draw:stroke', onStroke)
-    socket.on('draw:clear', onClear)
-    socket.on('draw:undo', onUndo)
-    return () => {
-      socket.off('draw:stroke', onStroke)
-      socket.off('draw:clear', onClear)
-      socket.off('draw:undo', onUndo)
+  useEffect(() => {
+    if (liveStrokeEnd && liveStrokeEnd.fromId !== playerId) {
+      canvasRef.current?.applyStrokeEnd(liveStrokeEnd.strokeId)
     }
-  }, [view, playerId])
+  }, [liveStrokeEnd?.nonce])
+
+  useEffect(() => {
+    if (drawClearNonce > 0) {
+      // Spectator clear: reset local canvas (no server echo needed)
+      canvasRef.current?.resetCanvas()
+    }
+  }, [drawClearNonce])
+
+  useEffect(() => {
+    if (drawUndoNonce > 0) {
+      // Spectator undo: pop last stroke locally (no server echo)
+      canvasRef.current?.remoteUndo()
+    }
+  }, [drawUndoNonce])
 
   // Derived: show word picker when it's our turn to choose (and not dismissed)
   const showWordPicker = isChooser && !!room?.wordChoices?.length && !showWordPickerDismissed
 
-  // Reset remote strokes tracking when phase changes to waiting/round-end (canvas cleared by server signal)
+  // Reset canvas when phase changes to a non-drawing state
   const phaseKey = room?.phase
-  const [lastPhase, setLastPhase] = useState<string | undefined>(phaseKey)
-  if (phaseKey !== lastPhase) {
-    setLastPhase(phaseKey)
-    if (phaseKey === 'waiting' || phaseKey === 'round-end') {
-      // Clear buffered remote strokes — actual canvas cleared by remote signal
-      if (remoteStrokes.length > 0) setRemoteStrokes([])
+  const lastPhaseRef = useRef<string | undefined>(phaseKey)
+  useEffect(() => {
+    if (phaseKey === lastPhaseRef.current) return
+    lastPhaseRef.current = phaseKey
+    if (phaseKey === 'waiting' || phaseKey === 'round-end' || phaseKey === 'choosing') {
+      // Reset local canvas state on phase transitions (server also sends a clear for round boundaries)
+      canvasRef.current?.resetCanvas()
     }
     if (phaseKey !== 'choosing') {
-      setShowWordPickerDismissed(false)
+      // Use a microtask to avoid setState-in-effect lint; this just resets the dismissed flag
+      // for the next time we enter choosing.
+      queueMicrotask(() => setShowWordPickerDismissed(false))
     }
-  }
+  }, [phaseKey])
 
   if (!room || !me) return null
 
@@ -109,15 +114,6 @@ export function GameRoomView() {
   }
   const handleRedo = () => {
     canvasRef.current?.redoLocal()
-  }
-  const handleStroke = (stroke: DrawStroke) => {
-    sendStroke(stroke)
-  }
-  const handleSendClear = () => {
-    clearCanvas()
-  }
-  const handleSendUndo = () => {
-    undoStroke()
   }
 
   // Word display logic
@@ -265,6 +261,15 @@ export function GameRoomView() {
             <Users className="h-3 w-3" />
             {room.players.filter(p => p.connected).length} online
           </Badge>
+          {room.isPublic ? (
+            <Badge variant="outline" className="gap-1 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-800">
+              🌐 Global Lobby
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="gap-1 bg-sky-50 dark:bg-sky-950/30">
+              🔒 Private Room
+            </Badge>
+          )}
           {room.phase === 'drawing' && (
             <Badge variant="outline" className="gap-1 bg-amber-50 dark:bg-amber-950/30">
               ✏️ {room.players.find(p => p.id === room.currentDrawerId)?.name} is drawing
@@ -352,15 +357,16 @@ export function GameRoomView() {
             <DrawingCanvas
               ref={canvasRef}
               isDrawer={!!isDrawer}
-              onStroke={handleStroke}
-              onClear={handleSendClear}
-              onUndo={handleSendUndo}
+              onStrokeStart={(stroke) => sendStrokeStart(stroke)}
+              onStrokePoint={(point) => sendStrokePoint(point)}
+              onStrokeEnd={(strokeId) => sendStrokeEnd(strokeId)}
+              onClear={() => clearCanvas()}
+              onUndo={() => undoStroke()}
               tool={tool}
               color={color}
               brushSize={brushSize}
-              remoteStrokes={remoteStrokes}
-              remoteClearSignal={remoteClearSignal}
-              remoteUndoSignal={remoteUndoSignal}
+              remoteClearSignal={drawClearNonce}
+              remoteUndoSignal={drawUndoNonce}
             />
             <ReactionsOverlay reaction={lastReaction} />
             <RoundEndOverlay word={lastRoundEnd?.word ?? null} />
