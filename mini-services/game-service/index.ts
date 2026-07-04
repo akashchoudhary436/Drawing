@@ -1,4 +1,4 @@
-import { createServer } from 'http'
+import { createServer, IncomingMessage, ServerResponse } from 'http'
 import { Server } from 'socket.io'
 import type { ClientToServerEvents, ServerToClientEvents, Room, Player, ChatMessage, DrawStroke, RoomSettings, Reaction } from '../../src/lib/game-types.ts'
 import { WORD_CATEGORIES, ALL_WORDS, getWordsForSettings, pickRandomWords } from '../../src/lib/words.ts'
@@ -10,6 +10,48 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   pingTimeout: 60000,
   pingInterval: 25000,
 })
+
+// --- Request logging & health endpoints (lightweight, no game state access) ---
+function requestLogger(req: IncomingMessage, res: ServerResponse): void {
+  const start = Date.now()
+  const log = () => {
+    const elapsed = Date.now() - start
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} ${res.statusCode} ${elapsed}ms`)
+  }
+  res.once('finish', log)
+  res.once('close', log)
+}
+
+function handleHealth(req: IncomingMessage, res: ServerResponse): boolean {
+  if (req.url === '/health' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({
+      status: 'ok',
+      service: 'Doodle Duel Backend',
+      uptime: process.uptime(),
+      timestamp: Date.now(),
+    }))
+    return true
+  }
+  if (req.url === '/' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' })
+    res.end('Doodle Duel Backend Running')
+    return true
+  }
+  return false
+}
+
+// Prepend health handler before Socket.IO's listener to intercept health endpoints
+const socketListeners = httpServer.listeners('request') as Array<(req: IncomingMessage, res: ServerResponse) => void>
+httpServer.removeAllListeners('request')
+httpServer.on('request', (req: IncomingMessage, res: ServerResponse) => {
+  requestLogger(req, res)
+  if (handleHealth(req, res)) return
+  for (const listener of socketListeners) {
+    listener(req, res)
+  }
+})
+// ---
 
 // ---------- In-memory state ----------
 const rooms = new Map<string, Room>()
