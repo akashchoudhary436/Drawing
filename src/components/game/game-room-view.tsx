@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -30,6 +30,7 @@ export function GameRoomView() {
     sendStrokeStart, sendStrokePoint, sendStrokeEnd, clearCanvas, undoStroke,
     sendReaction, lastReaction, lastRoundEnd, lastCorrectGuess,
     liveStrokeStart, liveStrokePoint, liveStrokeEnd, drawClearNonce, drawUndoNonce,
+    connectionState, reconnectAttempt,
   } = useGame()
   const { toast } = useToast()
 
@@ -45,6 +46,17 @@ export function GameRoomView() {
   const isChooser = me?.isDrawer && room?.phase === 'choosing'
   const isHost = room?.hostId === playerId
   const hasGuessed = me?.guessedThisRound ?? false
+
+  const sortedPlayers = useMemo(() => {
+    if (!room) return []
+    return [...room.players].sort((a, b) => b.score - a.score)
+  }, [room?.players])
+
+  const handleCopyCode = useCallback(() => {
+    if (!room) return
+    navigator.clipboard?.writeText(room.code)
+    toast({ title: 'Room code copied!', description: room.code })
+  }, [room?.code])
 
   // Forward live-stream events from the store to the canvas (spectator side)
   useEffect(() => {
@@ -100,11 +112,6 @@ export function GameRoomView() {
   }, [phaseKey])
 
   if (!room || !me) return null
-
-  const handleCopyCode = () => {
-    navigator.clipboard?.writeText(room.code)
-    toast({ title: 'Room code copied!', description: room.code })
-  }
 
   const handleClear = () => {
     canvasRef.current?.clearLocal()
@@ -300,6 +307,20 @@ export function GameRoomView() {
         </div>
       </header>
 
+      {/* Reconnection banner */}
+      {(connectionState === 'reconnecting' || connectionState === 'disconnected') && (
+        <div
+          className="px-3 py-2 text-xs text-center font-medium bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border-b border-amber-200 dark:border-amber-800"
+          role="alert"
+          aria-live="assertive"
+        >
+          {connectionState === 'disconnected'
+            ? 'Connection lost. Attempting to reconnect...'
+            : `Reconnecting${reconnectAttempt > 0 ? ` (attempt ${reconnectAttempt})` : ''}...`
+          }
+        </div>
+      )}
+
       {/* Mobile reactions row */}
       <div className="sm:hidden flex items-center justify-center gap-1 py-1.5 border-b bg-card/50">
         {REACTION_EMOJIS.slice(0, 6).map((e) => (
@@ -423,7 +444,7 @@ export function GameRoomView() {
                 </motion.div>
                 <div className="text-center">
                   <div className="font-bold text-xl">Game Over!</div>
-                  <Leaderboard players={room.players} />
+                  <Leaderboard players={sortedPlayers} />
                 </div>
                  {isHost && (
                    <Button size="lg" type="button" onClick={startGame} className="gap-2 bg-gradient-to-r from-emerald-500 to-teal-500" aria-label="Play again">
@@ -506,11 +527,10 @@ export function GameRoomView() {
 }
 
 function Leaderboard({ players }: { players: Room['players'] }) {
-  const sorted = [...players].sort((a, b) => b.score - a.score)
   const medals = ['🥇', '🥈', '🥉']
   return (
     <div className="mt-3 space-y-1 max-w-xs mx-auto">
-      {sorted.slice(0, 5).map((p, i) => (
+      {players.slice(0, 5).map((p, i) => (
         <div
           key={p.id}
           className={cn(

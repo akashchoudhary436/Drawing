@@ -11,7 +11,7 @@ import type {
   RoomSettings,
   StrokePoint,
 } from '@/lib/game-types'
-import { getSocket } from '@/lib/socket'
+import { getSocket, onConnectionStateChange, type ConnectionState } from '@/lib/socket'
 
 interface GameState {
   // Local player
@@ -23,6 +23,8 @@ interface GameState {
   room: Room | null
   view: 'landing' | 'room'
   connected: boolean
+  connectionState: ConnectionState
+  reconnectAttempt: number
   // Word choices for drawer
   wordChoices: string[]
   // Transient events
@@ -64,6 +66,8 @@ export const useGame = create<GameState>((set, get) => ({
   room: null,
   view: 'landing',
   connected: false,
+  connectionState: 'disconnected',
+  reconnectAttempt: 0,
   wordChoices: [],
   lastReaction: null,
   lastCorrectGuess: null,
@@ -78,8 +82,16 @@ export const useGame = create<GameState>((set, get) => ({
   init: () => {
     const socket = getSocket()
 
-    const onConnect = () => set({ connected: true })
-    const onDisconnect = () => set({ connected: false })
+    const onConnect = () => set({ connected: true, connectionState: 'connected', reconnectAttempt: 0 })
+    const onDisconnect = () => set({ connected: false, connectionState: 'reconnecting' })
+
+    const unsubState = onConnectionStateChange((state, attempt) => {
+      set({
+        connectionState: state,
+        reconnectAttempt: attempt ?? 0,
+        connected: state === 'connected',
+      })
+    })
 
     const onRoomState = (room: Room) => {
       const pid = get().playerId
@@ -187,6 +199,7 @@ export const useGame = create<GameState>((set, get) => ({
     socket.on('error', onError)
 
     return () => {
+      unsubState()
       socket.off('connect', onConnect)
       socket.off('disconnect', onDisconnect)
       socket.off('room:state', onRoomState)

@@ -18,7 +18,7 @@ import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
 export function LandingView() {
-  const { playerName, playerAvatar, playerColor, setPlayerInfo, createRoom, joinRoom, joinRandomRoom, connected } = useGame()
+  const { playerName, playerAvatar, playerColor, setPlayerInfo, createRoom, joinRoom, joinRandomRoom, connected, connectionState, reconnectAttempt } = useGame()
   const { toast } = useToast()
   const [joinCode, setJoinCode] = useState('')
   const [rounds, setRounds] = useState(3)
@@ -88,9 +88,9 @@ export function LandingView() {
     <div className="min-h-screen w-full flex flex-col">
       {/* Animated background */}
       <div className="fixed inset-0 -z-10 overflow-hidden bg-gradient-to-br from-rose-50 via-amber-50 to-emerald-50 dark:from-slate-950 dark:via-slate-900 dark:to-rose-950">
-        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-rose-300/30 dark:bg-rose-700/10 blur-3xl animate-pulse" />
-        <div className="absolute top-1/3 -right-32 w-96 h-96 rounded-full bg-amber-300/30 dark:bg-amber-700/10 blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-        <div className="absolute -bottom-32 left-1/3 w-96 h-96 rounded-full bg-emerald-300/30 dark:bg-emerald-700/10 blur-3xl animate-pulse" style={{ animationDelay: '2s' }} />
+        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-rose-300/30 dark:bg-rose-700/10 blur-3xl will-change-transform" />
+        <div className="absolute top-1/3 -right-32 w-96 h-96 rounded-full bg-amber-300/30 dark:bg-amber-700/10 blur-3xl will-change-transform" />
+        <div className="absolute -bottom-32 left-1/3 w-96 h-96 rounded-full bg-emerald-300/30 dark:bg-emerald-700/10 blur-3xl will-change-transform" />
       </div>
 
       {/* Header */}
@@ -109,11 +109,18 @@ export function LandingView() {
             variant={connected ? 'default' : 'secondary'}
             className={cn(
               'gap-1.5',
-              connected ? 'bg-emerald-500 hover:bg-emerald-500' : 'bg-amber-500 hover:bg-amber-500'
+              connected ? 'bg-emerald-500 hover:bg-emerald-500' :
+              connectionState === 'reconnecting' ? 'bg-amber-500 hover:bg-amber-500' :
+              'bg-red-500 hover:bg-red-500'
             )}
+            role="status"
+            aria-live="polite"
           >
             <span className={cn('h-2 w-2 rounded-full', connected ? 'bg-white animate-pulse' : 'bg-white/70')} />
-            {connected ? 'Online' : 'Connecting'}
+            {connected ? 'Online' :
+             connectionState === 'connecting' ? 'Connecting...' :
+             connectionState === 'reconnecting' ? `Reconnecting${reconnectAttempt > 0 ? ` (attempt ${reconnectAttempt})` : ''}...` :
+             'Offline'}
           </Badge>
         </div>
       </header>
@@ -297,7 +304,7 @@ export function LandingView() {
                   <div className="space-y-1.5">
                     <Label className="text-xs">Word source</Label>
                     <Select value={wordMode} onValueChange={(v: any) => setWordMode(v)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger aria-label="Word source"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">🌐 All categories (mixed)</SelectItem>
                         <SelectItem value="category">🎯 Specific category</SelectItem>
@@ -310,7 +317,7 @@ export function LandingView() {
                     <div className="space-y-1.5">
                       <Label className="text-xs">Category</Label>
                       <Select value={category} onValueChange={setCategory}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectTrigger aria-label="Word category"><SelectValue /></SelectTrigger>
                         <SelectContent>
                           {WORD_CATEGORIES.map((c) => (
                             <SelectItem key={c.id} value={c.id}>
@@ -339,7 +346,7 @@ export function LandingView() {
                       <div className="text-sm font-medium">Hints enabled</div>
                       <div className="text-xs text-muted-foreground">Reveal letters as time runs out</div>
                     </div>
-                    <Switch checked={hints} onCheckedChange={setHints} />
+                    <Switch checked={hints} onCheckedChange={setHints} aria-label="Enable letter hints" />
                   </div>
 
                   <Button

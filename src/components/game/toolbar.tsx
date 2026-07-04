@@ -77,7 +77,7 @@ export const Toolbar = memo(function Toolbar({
                   aria-label={`${t.label} tool`}
                   aria-pressed={tool === t.id}
                   title={t.label}
-                  className="h-9 w-9"
+                  className="h-10 w-10 sm:h-9 sm:w-9"
                   onClick={() => setTool(t.id)}
                 >
                   {t.icon}
@@ -110,7 +110,7 @@ export const Toolbar = memo(function Toolbar({
               />
             ))}
           </div>
-          <label className="relative h-9 w-9 rounded-md border border-border overflow-hidden cursor-pointer hover:scale-105 transition-transform">
+          <label className="relative h-10 w-10 sm:h-9 sm:w-9 rounded-md border border-border overflow-hidden cursor-pointer hover:scale-105 transition-transform">
             <input
               type="color"
               value={color}
@@ -140,7 +140,7 @@ export const Toolbar = memo(function Toolbar({
                 title={`Size ${s}`}
                 onClick={() => setBrushSize(s)}
                 className={cn(
-                  'h-9 w-9 rounded-md flex items-center justify-center border transition-all',
+                  'h-10 w-10 sm:h-9 sm:w-9 rounded-md flex items-center justify-center border transition-all',
                   brushSize === s ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-accent'
                 )}
               >
@@ -159,7 +159,7 @@ export const Toolbar = memo(function Toolbar({
         <div className="flex items-center gap-1">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" type="button" aria-label="Undo drawing" title="Undo" className="h-9 w-9" onClick={onUndo}>
+              <Button variant="ghost" size="icon" type="button" aria-label="Undo drawing" title="Undo" className="h-10 w-10 sm:h-9 sm:w-9" onClick={onUndo}>
                 <Undo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
@@ -167,7 +167,7 @@ export const Toolbar = memo(function Toolbar({
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" type="button" aria-label="Redo drawing" title="Redo" className="h-9 w-9" onClick={onRedo}>
+              <Button variant="ghost" size="icon" type="button" aria-label="Redo drawing" title="Redo" className="h-10 w-10 sm:h-9 sm:w-9" onClick={onRedo}>
                 <Redo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
@@ -175,7 +175,7 @@ export const Toolbar = memo(function Toolbar({
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" type="button" aria-label="Clear canvas" title="Clear canvas" className="h-9 w-9 text-destructive hover:text-destructive" onClick={onClear}>
+              <Button variant="ghost" size="icon" type="button" aria-label="Clear canvas" title="Clear canvas" className="h-10 w-10 sm:h-9 sm:w-9 text-destructive hover:text-destructive" onClick={onClear}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>

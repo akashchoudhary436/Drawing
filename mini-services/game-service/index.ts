@@ -692,7 +692,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on('error', (err) => {
-    console.error(`[socket error] ${socket.id}:`, err)
+    log(`[socket error] ${socket.id}:`, err)
   })
 })
 
