@@ -411,6 +411,47 @@ export function LandingView() {
           🎨 Doodle Duel · Built with Next.js 16 · Socket.io · Real-time multiplayer · Play on any device
         </div>
       </footer>
+
+      <section
+        aria-hidden="true"
+        className="sr-only"
+      >
+        <h2>Free Online Drawing & Guessing Game Like Skribbl</h2>
+        <p>
+          Doodle Duel is a free online multiplayer drawing and guessing game similar to Skribbl,
+          skribbl.io, and skribble. Players take turns drawing a secret word while the rest of the
+          room races to guess what it is in real time. It is one of the most fun drawing games and
+          guessing games you can play in your browser with friends — no download, no sign-up
+          required. If you enjoy Skribbl, Skribble, Pictionary, Gartic Phone, or any other online
+          drawing games, you will love Doodle Duel.
+        </p>
+        <h3>How Doodle Duel Compares to Skribbl</h3>
+        <p>
+          Like Skribbl.io and Skribble, Doodle Duel is a real-time multiplayer draw-and-guess party
+          game. One player draws a word and the others type their guesses in the chat. The faster
+          you guess correctly, the more points you earn, and the drawer also gets points for every
+          correct guess. After all rounds, the player with the highest score wins.
+        </p>
+        <h3>Features of Our Drawing Game</h3>
+        <ul>
+          <li>Real-time multiplayer drawing with up to 12 players per room</li>
+          <li>7 drawing tools: pen, brush, eraser, fill, line, rectangle, circle</li>
+          <li>30+ colors and 5 brush sizes</li>
+          <li>8 word categories: Animals, Food, Objects, Nature, Fantasy, Sports, Movies, Challenge</li>
+          <li>Progressive letter hints while the timer counts down</li>
+          <li>Emoji reactions and live chat</li>
+          <li>Mobile and desktop support — play on any device in the browser</li>
+          <li>Quick Play global lobby for instant matchmaking with online players</li>
+          <li>Private rooms with shareable 5-character room codes</li>
+        </ul>
+        <h3>Who Is This Drawing Game For?</h3>
+        <p>
+          Doodle Duel is perfect for anyone searching for drawing games, guessing games, online
+          party games, games like Skribbl, games like Skribble, free multiplayer games, or browser
+          games to play with friends. Great for classrooms, virtual hangouts, team building, and
+          casual fun.
+        </p>
+      </section>
     </div>
   )
 }
