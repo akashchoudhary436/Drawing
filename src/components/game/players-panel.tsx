@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Crown, Pencil, Check, Eye } from 'lucide-react'
@@ -14,7 +15,7 @@ interface PlayersPanelProps {
   phase: string
 }
 
-export function PlayersPanel({ players, currentDrawerId, hostId, myId, phase }: PlayersPanelProps) {
+export const PlayersPanel = memo(function PlayersPanel({ players, currentDrawerId, hostId, myId, phase }: PlayersPanelProps) {
   const sorted = [...players].sort((a, b) => b.score - a.score)
   return (
     <div className="flex flex-col gap-1.5 h-full">
@@ -91,4 +92,4 @@ export function PlayersPanel({ players, currentDrawerId, hostId, myId, phase }: 
       </div>
     </div>
   )
-}
+})

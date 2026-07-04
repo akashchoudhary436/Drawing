@@ -205,6 +205,9 @@ export function GameRoomView() {
             <Button
               variant="outline"
               size="sm"
+              type="button"
+              aria-label={`Copy room code ${room.code}`}
+              title="Copy room code"
               onClick={handleCopyCode}
               className="font-mono font-bold tracking-widest h-8 ml-1"
             >
@@ -233,19 +236,19 @@ export function GameRoomView() {
           {/* Right: actions */}
           <div className="flex items-center gap-1.5 shrink-0">
             {room.phase === 'waiting' && isHost && (
-              <Button size="sm" onClick={startGame} className="gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-500">
-                <Play className="h-3.5 w-3.5" /> Start
-              </Button>
+              <Button size="sm" type="button" onClick={startGame} className="gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-500" aria-label="Start game">
+                 <Play className="h-3.5 w-3.5" /> Start
+               </Button>
+             )}
+             {room.phase === 'game-end' && isHost && (
+               <Button size="sm" type="button" onClick={startGame} className="gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-500" aria-label="Play again">
+                 <RotateCcw className="h-3.5 w-3.5" /> Play Again
+               </Button>
             )}
-            {room.phase === 'game-end' && isHost && (
-              <Button size="sm" onClick={startGame} className="gap-1.5 bg-gradient-to-r from-emerald-500 to-teal-500">
-                <RotateCcw className="h-3.5 w-3.5" /> Play Again
-              </Button>
-            )}
-            <Button variant="outline" size="icon" className="h-8 w-8 sm:hidden" onClick={() => setShowMobilePlayers(true)}>
+            <Button variant="outline" size="icon" type="button" className="h-8 w-8 sm:hidden" aria-label="Open chat and players" title="Open chat and players" onClick={() => setShowMobilePlayers(true)}>
               <Users className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={leaveRoom} title="Leave room">
+            <Button variant="ghost" size="icon" type="button" className="h-8 w-8 text-destructive" aria-label="Leave room" title="Leave room" onClick={leaveRoom}>
               <LogOut className="h-4 w-4" />
             </Button>
           </div>
@@ -283,6 +286,9 @@ export function GameRoomView() {
                   key={e}
                   variant="ghost"
                   size="sm"
+                  type="button"
+                  aria-label={`React with ${e}`}
+                  title={`React with ${e}`}
                   className="h-7 w-7 p-0 text-base"
                   onClick={() => sendReaction(e)}
                 >
@@ -299,6 +305,9 @@ export function GameRoomView() {
         {REACTION_EMOJIS.slice(0, 6).map((e) => (
           <button
             key={e}
+            type="button"
+            aria-label={`React with ${e}`}
+            title={`React with ${e}`}
             onClick={() => sendReaction(e)}
             className="h-8 w-8 rounded-full hover:bg-accent text-lg"
           >
@@ -324,6 +333,9 @@ export function GameRoomView() {
               {REACTION_EMOJIS.map((e) => (
                 <button
                   key={e}
+                  type="button"
+                  aria-label={`React with ${e}`}
+                  title={`React with ${e}`}
                   onClick={() => sendReaction(e)}
                   className="h-8 w-8 rounded-full hover:bg-accent text-lg transition-transform hover:scale-125"
                 >
@@ -386,10 +398,10 @@ export function GameRoomView() {
                   </div>
                 </div>
                 {isHost && (
-                  <Button size="lg" onClick={startGame} className="gap-2 bg-gradient-to-r from-emerald-500 to-teal-500">
-                    <Play className="h-4 w-4" /> Start Game
-                  </Button>
-                )}
+                   <Button size="lg" type="button" onClick={startGame} className="gap-2 bg-gradient-to-r from-emerald-500 to-teal-500" aria-label="Start game">
+                     <Play className="h-4 w-4" /> Start Game
+                   </Button>
+                 )}
                 {room.players.length < 2 && (
                   <div className="text-xs text-amber-600 bg-amber-100 dark:bg-amber-950/40 px-3 py-1.5 rounded-full">
                     Need at least 2 players (you + 1 friend)
@@ -413,12 +425,12 @@ export function GameRoomView() {
                   <div className="font-bold text-xl">Game Over!</div>
                   <Leaderboard players={room.players} />
                 </div>
-                {isHost && (
-                  <Button size="lg" onClick={startGame} className="gap-2 bg-gradient-to-r from-emerald-500 to-teal-500">
-                    <RotateCcw className="h-4 w-4" /> Play Again
-                  </Button>
-                )}
-                <Button variant="outline" onClick={leaveRoom}>
+                 {isHost && (
+                   <Button size="lg" type="button" onClick={startGame} className="gap-2 bg-gradient-to-r from-emerald-500 to-teal-500" aria-label="Play again">
+                     <RotateCcw className="h-4 w-4" /> Play Again
+                   </Button>
+                 )}
+                 <Button variant="outline" type="button" aria-label="Leave room" onClick={leaveRoom}>
                   <LogOut className="h-4 w-4 mr-1" /> Leave Room
                 </Button>
               </div>
@@ -471,8 +483,10 @@ export function GameRoomView() {
       {/* Mobile chat toggle FAB */}
       <button
         className="lg:hidden fixed bottom-4 right-4 z-30 h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center"
+        type="button"
+        aria-label="Open chat and players"
+        title="Open chat and players"
         onClick={() => setShowMobilePlayers(true)}
-        aria-label="Open chat & players"
       >
         <Menu className="h-5 w-5" />
       </button>

@@ -196,19 +196,23 @@ export function LandingView() {
                     placeholder="Your name..."
                     maxLength={18}
                   />
-                  <Button variant="outline" size="icon" onClick={handleCopyDemo} title="Random name">
-                    <Swords className="h-4 w-4" />
-                  </Button>
+                  <Button variant="outline" size="icon" type="button" onClick={handleCopyDemo} title="Generate random name" aria-label="Generate random name">
+                     <Swords className="h-4 w-4" />
+                   </Button>
                 </div>
               </div>
 
               <div className="space-y-1.5">
                 <Label>Avatar</Label>
                 <ScrollArea className="h-24 w-full rounded-md border p-2">
-                  <div className="grid grid-cols-8 gap-1.5">
+                  <div className="grid grid-cols-8 gap-1.5" role="radiogroup" aria-label="Select avatar">
                     {AVATARS.map((a) => (
                       <button
                         key={a}
+                        type="button"
+                        role="radio"
+                        aria-checked={playerAvatar === a}
+                        aria-label={`Select ${a} avatar`}
                         onClick={() => setPlayerInfo(playerName, a, playerColor)}
                         className={cn(
                           'h-8 w-8 rounded-md text-lg flex items-center justify-center border transition-all hover:scale-110',
@@ -224,10 +228,15 @@ export function LandingView() {
 
               <div className="space-y-1.5">
                 <Label>Avatar Color</Label>
-                <div className="grid grid-cols-8 gap-1.5">
+                <div className="grid grid-cols-8 gap-1.5" role="radiogroup" aria-label="Select avatar color">
                   {AVATAR_COLORS.map((c) => (
                     <button
                       key={c}
+                      type="button"
+                      role="radio"
+                      aria-checked={playerColor === c}
+                      aria-label={`Select color ${c}`}
+                      title={c}
                       onClick={() => setPlayerInfo(playerName, playerAvatar, c)}
                       className={cn(
                         'h-7 w-7 rounded-md border-2 transition-transform hover:scale-110',
@@ -277,11 +286,11 @@ export function LandingView() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-xs">Rounds: <span className="font-bold text-primary">{rounds}</span></Label>
-                      <Slider value={[rounds]} onValueChange={(v) => setRounds(v[0])} min={1} max={8} step={1} />
+                      <Slider value={[rounds]} onValueChange={(v) => setRounds(v[0])} min={1} max={8} step={1} aria-label="Number of rounds" />
                     </div>
                     <div className="space-y-1.5">
                       <Label className="text-xs">Draw time: <span className="font-bold text-primary">{drawTime}s</span></Label>
-                      <Slider value={[drawTime]} onValueChange={(v) => setDrawTime(v[0])} min={30} max={180} step={10} />
+                      <Slider value={[drawTime]} onValueChange={(v) => setDrawTime(v[0])} min={30} max={180} step={10} aria-label="Draw time in seconds" />
                     </div>
                   </div>
 

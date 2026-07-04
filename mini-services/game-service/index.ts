@@ -4,6 +4,9 @@ import type { ClientToServerEvents, ServerToClientEvents, Room, Player, ChatMess
 import { WORD_CATEGORIES, ALL_WORDS, getWordsForSettings, pickRandomWords } from '../../src/lib/words.ts'
 
 // ---------- HTTP server with health endpoints + request logging ----------
+const DEBUG = process.env.DEBUG === '1'
+const log = (...args: unknown[]) => { if (DEBUG) console.log(...args) }
+
 const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
   const start = Date.now()
   const url = req.url || '/'
@@ -16,7 +19,7 @@ const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
 
   // Log every request with status when response finishes
   res.on('finish', () => {
-    console.log(`[${new Date().toISOString()}] ${method} ${url} ${res.statusCode} ${Date.now() - start}ms`)
+    log(`[${new Date().toISOString()}] ${method} ${url} ${res.statusCode} ${Date.now() - start}ms`)
   })
 
   // Handle preflight
@@ -446,7 +449,7 @@ function handleGuess(room: Room, player: Player, content: string) {
 
 // ---------- Socket handlers ----------
 io.on('connection', (socket) => {
-  console.log(`[connected] ${socket.id}`)
+  log(`[connected] ${socket.id}`)
 
   socket.on('room:create', (data, ack) => {
     const player = createPlayer(socket.id, data.name, data.avatar, data.color, true)
@@ -456,7 +459,7 @@ io.on('connection', (socket) => {
     playerRoomMap.set(socket.id, room.code)
     socket.join(room.code)
     ack({ ok: true, room, playerId: player.id })
-    console.log(`[room:create] ${player.name} created ${room.code}`)
+    log(`[room:create] ${player.name} created ${room.code}`)
   })
 
   socket.on('room:join', (data, ack) => {
@@ -478,7 +481,7 @@ io.on('connection', (socket) => {
     room.messages.push(systemMsg(`${player.name} ${player.avatar} joined the room!`))
     broadcastRoomState(room)
     ack({ ok: true, room, playerId: player.id })
-    console.log(`[room:join] ${player.name} joined ${room.code}`)
+    log(`[room:join] ${player.name} joined ${room.code}`)
   })
 
   socket.on('room:join-random', (data, ack) => {
@@ -493,7 +496,7 @@ io.on('connection', (socket) => {
       playerRoomMap.set(socket.id, room.code)
       socket.join(room.code)
       ack({ ok: true, room, playerId: player.id })
-      console.log(`[room:join-random] ${player.name} created public ${room.code}`)
+      log(`[room:join-random] ${player.name} created public ${room.code}`)
       return
     }
     // Join the existing public room
@@ -504,7 +507,7 @@ io.on('connection', (socket) => {
     room.messages.push(systemMsg(`${player.name} ${player.avatar} joined from the global lobby!`))
     broadcastRoomState(room)
     ack({ ok: true, room, playerId: player.id })
-    console.log(`[room:join-random] ${player.name} joined public ${room.code}`)
+    log(`[room:join-random] ${player.name} joined public ${room.code}`)
   })
 
   socket.on('room:reconnect', (data, ack) => {

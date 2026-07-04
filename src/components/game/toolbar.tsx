@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -52,7 +53,7 @@ const COLORS = [
 
 const BRUSH_SIZES = [2, 5, 10, 18, 30]
 
-export function Toolbar({
+export const Toolbar = memo(function Toolbar({
   tool, setTool, color, setColor, brushSize, setBrushSize,
   onClear, onUndo, onRedo, disabled,
 }: ToolbarProps) {
@@ -72,6 +73,10 @@ export function Toolbar({
                 <Button
                   variant={tool === t.id ? 'default' : 'ghost'}
                   size="icon"
+                  type="button"
+                  aria-label={`${t.label} tool`}
+                  aria-pressed={tool === t.id}
+                  title={t.label}
                   className="h-9 w-9"
                   onClick={() => setTool(t.id)}
                 >
@@ -87,17 +92,21 @@ export function Toolbar({
 
         {/* Color palette */}
         <div className="flex items-center gap-2">
-          <div className="grid grid-cols-6 sm:grid-cols-10 md:grid-cols-6 lg:grid-cols-10 gap-1 max-w-[280px]">
+          <div className="grid grid-cols-6 sm:grid-cols-10 md:grid-cols-6 lg:grid-cols-10 gap-1 max-w-[280px]" role="radiogroup" aria-label="Drawing color">
             {COLORS.map((c) => (
               <button
                 key={c}
+                type="button"
+                role="radio"
+                aria-checked={color === c}
+                aria-label={`Select color ${c}`}
+                title={c}
                 onClick={() => setColor(c)}
                 className={cn(
                   'h-6 w-6 rounded-md border transition-transform hover:scale-110',
                   color === c ? 'ring-2 ring-offset-1 ring-primary scale-110' : 'border-border'
                 )}
                 style={{ backgroundColor: c }}
-                aria-label={`Color ${c}`}
               />
             ))}
           </div>
@@ -107,6 +116,7 @@ export function Toolbar({
               value={color}
               onChange={(e) => setColor(e.target.value)}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              aria-label="Pick custom color"
             />
             <div
               className="h-full w-full"
@@ -119,16 +129,20 @@ export function Toolbar({
 
         {/* Brush size */}
         <div className="flex items-center gap-2 min-w-[140px]">
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1" role="radiogroup" aria-label="Brush size">
             {BRUSH_SIZES.map((s) => (
               <button
                 key={s}
+                type="button"
+                role="radio"
+                aria-checked={brushSize === s}
+                aria-label={`Brush size ${s}`}
+                title={`Size ${s}`}
                 onClick={() => setBrushSize(s)}
                 className={cn(
                   'h-9 w-9 rounded-md flex items-center justify-center border transition-all',
                   brushSize === s ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-accent'
                 )}
-                aria-label={`Brush size ${s}`}
               >
                 <span
                   className="rounded-full bg-current"
@@ -145,7 +159,7 @@ export function Toolbar({
         <div className="flex items-center gap-1">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onUndo}>
+              <Button variant="ghost" size="icon" type="button" aria-label="Undo drawing" title="Undo" className="h-9 w-9" onClick={onUndo}>
                 <Undo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
@@ -153,7 +167,7 @@ export function Toolbar({
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9" onClick={onRedo}>
+              <Button variant="ghost" size="icon" type="button" aria-label="Redo drawing" title="Redo" className="h-9 w-9" onClick={onRedo}>
                 <Redo2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
@@ -161,7 +175,7 @@ export function Toolbar({
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:text-destructive" onClick={onClear}>
+              <Button variant="ghost" size="icon" type="button" aria-label="Clear canvas" title="Clear canvas" className="h-9 w-9 text-destructive hover:text-destructive" onClick={onClear}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
@@ -171,4 +185,4 @@ export function Toolbar({
       </div>
     </TooltipProvider>
   )
-}
+})

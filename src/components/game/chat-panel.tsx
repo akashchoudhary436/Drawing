@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, memo, useCallback } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -17,7 +17,7 @@ interface ChatPanelProps {
   phase: string
 }
 
-export function ChatPanel({ messages, onSend, canGuess, hasGuessed, isDrawer, phase }: ChatPanelProps) {
+export const ChatPanel = memo(function ChatPanel({ messages, onSend, canGuess, hasGuessed, isDrawer, phase }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -27,12 +27,12 @@ export function ChatPanel({ messages, onSend, canGuess, hasGuessed, isDrawer, ph
     }
   }, [messages])
 
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     const trimmed = input.trim()
     if (!trimmed) return
     onSend(trimmed)
     setInput('')
-  }
+  }, [input, onSend])
 
   const placeholder = isDrawer
     ? "You're drawing — no guessing!"
@@ -126,6 +126,8 @@ export function ChatPanel({ messages, onSend, canGuess, hasGuessed, isDrawer, ph
         />
         <Button
           size="icon"
+          type="button"
+          aria-label="Send message"
           onClick={handleSend}
           disabled={isDrawer || hasGuessed || !canGuess || !input.trim()}
         >
@@ -134,4 +136,4 @@ export function ChatPanel({ messages, onSend, canGuess, hasGuessed, isDrawer, ph
       </div>
     </div>
   )
-}
+})
