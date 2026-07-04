@@ -1,54 +1,61 @@
-import { createServer, IncomingMessage, ServerResponse } from 'http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { Server } from 'socket.io'
 import type { ClientToServerEvents, ServerToClientEvents, Room, Player, ChatMessage, DrawStroke, RoomSettings, Reaction } from '../../src/lib/game-types.ts'
 import { WORD_CATEGORIES, ALL_WORDS, getWordsForSettings, pickRandomWords } from '../../src/lib/words.ts'
 
-const httpServer = createServer()
+// ---------- HTTP server with health endpoints + request logging ----------
+const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+  const start = Date.now()
+  const url = req.url || '/'
+  const method = req.method || 'GET'
+
+  // CORS headers for all HTTP responses
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+  // Log every request with status when response finishes
+  res.on('finish', () => {
+    console.log(`[${new Date().toISOString()}] ${method} ${url} ${res.statusCode} ${Date.now() - start}ms`)
+  })
+
+  // Handle preflight
+  if (method === 'OPTIONS') {
+    res.writeHead(204)
+    res.end()
+    return
+  }
+
+  // GET /health — lightweight health check (no Socket.IO, no rooms, no DB)
+  if (method === 'GET' && url === '/health') {
+    const body = JSON.stringify({
+      status: 'ok',
+      service: 'Doodle Duel Backend',
+      uptime: process.uptime(),
+      timestamp: Date.now(),
+    })
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(body)
+    return
+  }
+
+  // GET / — root endpoint
+  if (method === 'GET' && url === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' })
+    res.end('Doodle Duel Backend Running')
+    return
+  }
+
+  // All other requests fall through to Socket.IO (engine.io)
+  // Do NOT call res.end() — Socket.IO's engine.io handler will respond
+})
+
 const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   path: '/',
   cors: { origin: '*', methods: ['GET', 'POST'] },
   pingTimeout: 60000,
   pingInterval: 25000,
 })
-
-// --- Request logging & health endpoints (lightweight, no game state access) ---
-function requestLogger(req: IncomingMessage, res: ServerResponse): void {
-  const start = Date.now()
-  res.once('finish', () => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} ${res.statusCode} ${Date.now() - start}ms`)
-  })
-}
-
-function handleHealth(req: IncomingMessage, res: ServerResponse): boolean {
-  if (req.url === '/health' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify({
-      status: 'ok',
-      service: 'Doodle Duel Backend',
-      uptime: process.uptime(),
-      timestamp: Date.now(),
-    }))
-    return true
-  }
-  if (req.url === '/' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'text/plain' })
-    res.end('Doodle Duel Backend Running')
-    return true
-  }
-  return false
-}
-
-// Prepend health handler before Socket.IO's listener to intercept health endpoints
-const socketListeners = httpServer.listeners('request') as Array<(req: IncomingMessage, res: ServerResponse) => void>
-httpServer.removeAllListeners('request')
-httpServer.on('request', (req: IncomingMessage, res: ServerResponse) => {
-  requestLogger(req, res)
-  if (handleHealth(req, res)) return
-  for (const listener of socketListeners) {
-    listener(req, res)
-  }
-})
-// ---
 
 // ---------- In-memory state ----------
 const rooms = new Map<string, Room>()
