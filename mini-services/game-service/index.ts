@@ -14,12 +14,9 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
 // --- Request logging & health endpoints (lightweight, no game state access) ---
 function requestLogger(req: IncomingMessage, res: ServerResponse): void {
   const start = Date.now()
-  const log = () => {
-    const elapsed = Date.now() - start
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} ${res.statusCode} ${elapsed}ms`)
-  }
-  res.once('finish', log)
-  res.once('close', log)
+  res.once('finish', () => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} ${res.statusCode} ${Date.now() - start}ms`)
+  })
 }
 
 function handleHealth(req: IncomingMessage, res: ServerResponse): boolean {
