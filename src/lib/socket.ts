@@ -7,7 +7,10 @@ let socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null
 
 export function getSocket(): Socket<ServerToClientEvents, ClientToServerEvents> {
   if (!socket) {
-    socket = io('/?XTransformPort=3003', {
+    const gameUrl = typeof window !== 'undefined' && window.location.hostname === 'localhost'
+      ? '/?XTransformPort=3003'
+      : 'https://doodle-duel-game.onrender.com'
+    socket = io(gameUrl, {
       transports: ['websocket', 'polling'],
       forceNew: true,
       reconnection: true,

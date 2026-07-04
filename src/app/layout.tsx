@@ -14,7 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://doodleduel.app"),
+  metadataBase: new URL("https://doodle-duel-ufjv.onrender.com"),
+  verification: { google: "google80cc35fa307ef1e3" },
   title: {
     default: "Doodle Duel — Free Online Multiplayer Drawing & Guessing Game",
     template: "%s · Doodle Duel",
@@ -55,7 +56,7 @@ export const metadata: Metadata = {
       "Draw it. Guess it. Win it together. A free real-time multiplayer drawing party game like Skribbl. Play with friends on any device — no download needed.",
     siteName: "Doodle Duel",
     type: "website",
-    url: "/",
+    url: "https://doodle-duel-ufjv.onrender.com/",
     locale: "en_US",
   },
   twitter: {
@@ -83,7 +84,7 @@ const jsonLd = {
   applicationCategory: "GameApplication",
   applicationSubCategory: "Drawing & Guessing Game",
   operatingSystem: "Web Browser",
-  url: "https://doodleduel.app/",
+  url: "https://doodle-duel-ufjv.onrender.com/",
   description:
     "Free online multiplayer drawing and guessing game. Take turns drawing words while friends race to guess in real time. Play like Skribbl in your browser — no download needed.",
   offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },

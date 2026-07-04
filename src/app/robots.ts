@@ -6,7 +6,7 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: '*',
       allow: '/',
     },
-    sitemap: 'https://doodleduel.app/sitemap.xml',
-    host: 'https://doodleduel.app',
+    sitemap: 'https://doodle-duel-ufjv.onrender.com/sitemap.xml',
+    host: 'https://doodle-duel-ufjv.onrender.com',
   }
 }
