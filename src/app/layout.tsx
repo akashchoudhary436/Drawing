@@ -17,11 +17,11 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://doodle-duel-ufjv.onrender.com"),
   verification: { google: "google80cc35fa307ef1e3" },
   title: {
-    default: "Doodle Duel — Free Online Multiplayer Drawing & Guessing Game",
+    default: "Doodle Duel - Free Multiplayer Drawing & Guessing Game | Play Online",
     template: "%s · Doodle Duel",
   },
   description:
-    "Play Doodle Duel, a free online multiplayer drawing and guessing game like Skribbl. Take turns drawing words while friends race to guess in real time. No download, play instantly in your browser on any device.",
+    "Play Doodle Duel, a free online multiplayer drawing and guessing game inspired by classic party drawing games. Create private rooms, challenge friends, draw, guess, and compete in real time.",
   keywords: [
     "skribbl",
     "skribble",
@@ -48,12 +48,19 @@ export const metadata: Metadata = {
     canonical: "/",
   },
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml", sizes: "any" },
+    ],
+    apple: [
+      { url: "/favicon.svg", sizes: "any" },
+    ],
   },
+  manifest: "/site.webmanifest",
+  themeColor: "#f59e0b",
   openGraph: {
-    title: "Doodle Duel — Free Online Multiplayer Drawing & Guessing Game",
+    title: "Doodle Duel - Free Multiplayer Drawing & Guessing Game",
     description:
-      "Draw it. Guess it. Win it together. A free real-time multiplayer drawing party game like Skribbl. Play with friends on any device — no download needed.",
+      "Play Doodle Duel, a free online multiplayer drawing and guessing game. Create private rooms, challenge friends, draw, guess, and compete in real time.",
     siteName: "Doodle Duel",
     type: "website",
     url: "https://doodle-duel-ufjv.onrender.com/",
@@ -69,8 +76,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Doodle Duel — Free Online Drawing & Guessing Game",
-    description: "Play a free multiplayer drawing & guessing party game like Skribbl. Draw, guess, and win with friends in real time.",
+    title: "Doodle Duel - Free Multiplayer Drawing & Guessing Game",
+    description: "Play Doodle Duel, a free online multiplayer drawing and guessing game. Draw, guess, and compete with friends in real time.",
   },
   robots: {
     index: true,

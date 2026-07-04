@@ -1,0 +1,16 @@
+{
+  "name": "Doodle Duel",
+  "short_name": "Doodle Duel",
+  "description": "Free Multiplayer Drawing & Guessing Game",
+  "start_url": "/",
+  "theme_color": "#f59e0b",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
